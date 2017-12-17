@@ -117,12 +117,20 @@ class Trainer(object):
             for func, args, kwargs in self._event_handlers[event_name]:
                 func(self, *args, **kwargs)
 
+    trainItr = None
     def _train_one_epoch(self):
         self._fire_event(TrainingEvents.TRAINING_EPOCH_STARTED)
         start_time = time.time()
 
         self.epoch_losses = []
-        for _, batch in enumerate(self.training_data, 1):
+
+        self.trainItr = self.trainItr or iter(self.training_data)
+        for _ in range(self.nbatches or len(self.trainItr)):
+            batch = next(self.trainItr, None)
+            if batch is None:
+                self.trainItr = iter(self.training_data)
+                batch = next(self.trainItr)
+
             self._fire_event(TrainingEvents.TRAINING_ITERATION_STARTED)
 
             training_step_result = self._training_update_function(batch)
@@ -142,6 +150,7 @@ class Trainer(object):
 
         self._fire_event(TrainingEvents.TRAINING_EPOCH_COMPLETED)
 
+    validateItr = None
     def validate(self):
         """ Evaluates the validation set"""
         if self.validation_data is None:
@@ -151,7 +160,13 @@ class Trainer(object):
         self._fire_event(TrainingEvents.VALIDATION_STARTING)
         start_time = time.time()
 
-        for _, batch in enumerate(self.validation_data, 1):
+        self.validateItr = self.validateItr or iter(self.validation_data)
+        for _ in range(self.vbatches or len(self.validateItr)):
+            batch = next(self.validateItr, None)
+            if batch is None:
+                self.validateItr = iter(self.validation_data)
+                batch = next(self.validateItr)
+                
             self._fire_event(TrainingEvents.VALIDATION_ITERATION_STARTED)
             validation_step_result = self._validation_inference_function(batch)
             if validation_step_result is not None:
@@ -176,7 +191,7 @@ class Trainer(object):
                           "Training will stop after current iteration is finished")
         self.should_terminate = True
 
-    def run(self, max_epochs=1, validate_every=1):
+    def run(self, max_epochs=1, validate_every=1, nbatches=None, vbatches=None):
         """
         Train the model, evaluate the validation set and update best parameters if the validation loss
         improves.
@@ -200,6 +215,8 @@ class Trainer(object):
 
             self.max_epochs = max_epochs
             self.validate_every = validate_every and max(0, validate_every) or 0
+            self.nbatches = nbatches
+            self.vbatches = vbatches
             start_time = time.time()
 
             self._fire_event(TrainingEvents.TRAINING_STARTED)
